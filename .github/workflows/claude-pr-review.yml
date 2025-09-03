@@ -60,21 +60,62 @@ jobs:
           gem install rubocop || true
           rubocop || true
 
-      - name: Run Claude Code review (style-aware, best-practice suggestions)
+      - name: Run Claude Code review and post comments
         uses: anthropics/claude-code-action@v1
+        id: claude-review
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
-            Please review this pull request for security issues, bugs, and best practices. 
+            Review this pull request for security issues, bugs, and best practices.
             
-            For any issues you find, please:
-            1. Use the mcp__github_comment__update_claude_comment tool to post review comments
-            2. Include specific code suggestions using GitHub's suggestion format
-            3. Mark severity as **Blocking** or **Non-blocking**
-            4. Focus on security, correctness, and maintainability
+            Focus on:
+            - Security vulnerabilities (SQL injection, XSS, hardcoded secrets)  
+            - Input validation issues
+            - Authentication/authorization flaws
+            - Code quality and best practices
             
-            /review
+            Provide a detailed analysis with specific recommendations.
           claude_args: |
             --model claude-3-5-haiku-20241022
-            --max-turns 10
+            --max-turns 6
+
+      - name: Post Claude review as PR comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            
+            // Read Claude's output
+            let reviewContent = '';
+            try {
+              const outputPath = '/home/runner/work/_temp/claude-execution-output.json';
+              if (fs.existsSync(outputPath)) {
+                const rawOutput = fs.readFileSync(outputPath, 'utf8');
+                const lines = rawOutput.trim().split('\n');
+                const lastLine = lines[lines.length - 1];
+                const result = JSON.parse(lastLine);
+                reviewContent = result.result || 'Claude review completed - check workflow summary for details.';
+              } else {
+                reviewContent = 'Claude review completed - check workflow summary for details.';
+              }
+            } catch (error) {
+              reviewContent = `Claude review completed with analysis. Check the [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.`;
+            }
+            
+            // Post the review as a comment
+            const comment = `## 🤖 Claude PR Review
+            
+${reviewContent}
+
+---
+*Automated review by [Claude Code](https://claude.ai/code)*`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
