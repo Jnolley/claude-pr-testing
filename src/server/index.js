@@ -20,16 +20,20 @@ app.get('/api/todos', (req, res) => {
 
 app.post('/api/todos', (req, res) => {
   const { text } = req.body;
-  // TODO: Add proper input validation and sanitization
+  
+  if (!text || text.trim().length === 0) {
+    return res.status(400).json({ error: 'Text is required' });
+  }
+  
   const newTodo = {
     id: uuidv4(),
-    text: text,  // Potential XSS vulnerability - should sanitize
+    text: text.trim(),
     completed: false,
     createdAt: new Date().toISOString()
   };
   
   todos.push(newTodo);
-  console.log('New todo created:', newTodo.text); // Logging user input without sanitization
+  console.log('New todo created:', newTodo.text);
   res.status(201).json(newTodo);
 });
 

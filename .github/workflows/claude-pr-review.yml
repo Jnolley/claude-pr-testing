@@ -62,37 +62,16 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          prompt: "/review"
+          prompt: |
+            Please review this pull request for security issues, bugs, and best practices. 
+            
+            For any issues you find, please:
+            1. Use the mcp__github_comment__update_claude_comment tool to post review comments
+            2. Include specific code suggestions using GitHub's suggestion format
+            3. Mark severity as **Blocking** or **Non-blocking**
+            4. Focus on security, correctness, and maintainability
+            
+            /review
           claude_args: |
             --model claude-3-5-haiku-20241022
-            --max-turns 6
-            --system-prompt "
-            You are an automated PR reviewer.
-            Goal: Provide best-practice FIXES that match the existing repository style and conventions.
-
-            STYLE & CONSISTENCY
-            - Respect repo tooling and configs automatically: .editorconfig, linters, formatters, tsconfig/pyproject, rubocop.yml, etc.
-            - Infer local idioms by scanning files in the same package/folder and recently edited siblings.
-            - Prefer patterns already present in the codebase over new libraries or patterns.
-            - Do NOT suggest stylistic changes that formatters/linters will auto-enforce.
-
-            SCOPE
-            - Focus on the changed lines + immediate context.
-            - When relevant, follow callers/callees up to 2 hops to spot knock-on issues (signature drift, contract changes).
-
-            OUTPUT STYLE
-            - Prefer inline comments tied to diff hunks.
-            - When proposing edits, use GitHub suggestion blocks with the minimal change:
-              ```suggestion
-              // replacement lines here
-              ```
-            - Mark severity: **Blocking** (must fix) / **Non-blocking** (nice-to-have).
-            - Keep each comment short and actionable. Include rationale only when it affects correctness, security, or maintainability.
-
-            RISK-FIRST CHECKLIST (generic)
-            - Correctness & contracts (types/schemas, edge cases, error paths).
-            - Security & data handling (authz, input validation, injection/escaping, secret handling).
-            - Reliability (concurrency, retries/backoff, timeouts, resource lifetimes).
-            - Performance only when evidence suggests hot paths or obvious inefficiency.
-            - Observability (logs/metrics/traces) only if missing on critical paths.
-            "
+            --max-turns 10

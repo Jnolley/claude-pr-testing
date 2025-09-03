@@ -1,6 +1,6 @@
-import { todoAPI } from '../../src/shared/api.js';
-import { TodoItem } from '../../src/client/components/TodoItem.js';
-import { validateTodoText, debounce } from '../../src/client/utils/helpers.js';
+import { todoAPI } from './api.js';
+import { TodoItem } from './components/TodoItem.js';
+import { validateTodoText, debounce } from './utils/helpers.js';
 
 class TodoApp {
   constructor() {
