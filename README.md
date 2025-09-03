@@ -81,3 +81,6 @@ npm start
 ```
 
 The server runs on `http://localhost:3000` with the frontend served from the `/public` directory.
+
+## Claude PR Review
+This repository includes automated Claude PR reviews via GitHub Actions.
