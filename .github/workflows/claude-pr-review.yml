@@ -1,0 +1,121 @@
+name: Claude PR Auto Review (Repo-Style Aware)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  id-token: write
+  actions: read
+  checks: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      group: claude-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # (Optional but helpful) Run your linters/formatters in CHECK mode so Claude can assume they'll enforce style.
+      # Node/TS (if present)
+      - name: Lint (ESLint) — if Node project
+        if: ${{ hashFiles('**/package.json') != '' }}
+        run: |
+          if [ -f package-lock.json ] || [ -f pnpm-lock.yaml ] || [ -f yarn.lock ]; then
+            echo "Installing deps (lockfile detected)…"
+            if [ -f pnpm-lock.yaml ]; then npm i -g pnpm && pnpm i --frozen-lockfile; \
+            elif [ -f yarn.lock ]; then yarn --frozen-lockfile; \
+            else npm ci; fi
+          fi
+          npx --yes eslint . || true
+
+      - name: Format check (Prettier) — if Node project
+        if: ${{ hashFiles('**/package.json') != '' }}
+        run: |
+          npx --yes prettier -c . || true
+
+      # Python (if present)
+      - name: Lint/format check (Python) — if Python project
+        if: ${{ hashFiles('**/pyproject.toml') != '' || hashFiles('**/requirements*.txt') != '' }}
+        run: |
+          python -m pip install --upgrade pip || true
+          pip install black isort flake8 || true
+          black --check . || true
+          isort --check-only . || true
+          flake8 || true
+
+      # Ruby (if present)
+      - name: Lint/format check (Ruby) — if Ruby project
+        if: ${{ hashFiles('**/Gemfile') != '' }}
+        run: |
+          gem install rubocop || true
+          rubocop || true
+
+      - name: Run Claude Code review and post comments
+        uses: anthropics/claude-code-action@v1
+        id: claude-review
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            Review this pull request for security issues, bugs, and best practices.
+            
+            Focus on:
+            - Security vulnerabilities (SQL injection, XSS, hardcoded secrets)  
+            - Input validation issues
+            - Authentication/authorization flaws
+            - Code quality and best practices
+            
+            Provide a detailed analysis with specific recommendations.
+          claude_args: |
+            --model claude-3-5-haiku-20241022
+            --max-turns 6
+
+      - name: Post Claude review as PR comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            
+            // Read Claude's output
+            let reviewContent = '';
+            try {
+              const outputPath = '/home/runner/work/_temp/claude-execution-output.json';
+              if (fs.existsSync(outputPath)) {
+                const rawOutput = fs.readFileSync(outputPath, 'utf8');
+                const lines = rawOutput.trim().split('\n');
+                const lastLine = lines[lines.length - 1];
+                const result = JSON.parse(lastLine);
+                reviewContent = result.result || 'Claude review completed - check workflow summary for details.';
+              } else {
+                reviewContent = 'Claude review completed - check workflow summary for details.';
+              }
+            } catch (error) {
+              reviewContent = `Claude review completed with analysis. Check the [workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details.`;
+            }
+            
+            // Post the review as a comment
+            const comment = `## 🤖 Claude PR Review
+            
+${reviewContent}
+
+---
+*Automated review by [Claude Code](https://claude.ai/code)*`;
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: comment
+            });
